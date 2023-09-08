@@ -111,6 +111,7 @@ func (app *App) GetSelectionText() (string, error) {
 	script := `
 		 tell application "System Events" to keystroke "c" using command down
 		 delay 0.1
+		tell application "System Events" to keystroke "c" using command up
 		 set the clipboard to (the clipboard as text)
 		 get the clipboard
 	`
