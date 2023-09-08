@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Is It Correct",
+  "description": "AI powered grammar checker for your writing",
+  "version": "0.0.0",
+  "author": "nguyenvanduocit@gmail.com",
+  "icons": {
+    "16": "assets/icon16.png",
+    "32": "assets/icon32.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "js": ["src/chatgpt.ts"],
+      "matches": ["https://chat.openai.com/*"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": ["storage"]
+}
