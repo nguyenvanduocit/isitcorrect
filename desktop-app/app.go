@@ -49,6 +49,7 @@ func (app *App) startup(ctx context.Context) {
 		}()
 
 		runtime.EventsEmit(ctx, "ext-connected", true)
+		app.conn.WriteMessage(websocket.TextMessage, []byte("setSystemMessage"))
 
 		for {
 			messageType, message, err := app.conn.ReadMessage()
@@ -98,6 +99,8 @@ func (app *App) startup(ctx context.Context) {
 
 			app.SendMessage(question)
 			runtime.EventsEmit(ctx, "question", question)
+			runtime.EventsEmit(ctx, "isLoading", true)
+			runtime.WindowShow(ctx) // Show the
 		}
 	}()
 

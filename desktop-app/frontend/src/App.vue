@@ -33,6 +33,9 @@ EventsOn('ext-connected', (isConnected: boolean) => {
 EventsOn('question', (data: string) => {
   question.value = data
 })
+EventsOn('isLoading', (data: boolean) => {
+  isLoading.value = data
+})
 
 const sendMessage = async () => {
   isLoading.value = true

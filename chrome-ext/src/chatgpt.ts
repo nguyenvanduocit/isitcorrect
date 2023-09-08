@@ -19,12 +19,15 @@ ws.addEventListener('error', (err) => {
   console.error(err)
 })
 
-setSystemMessage().then(() => {
-  console.log('System message set')
-})
-
 let controller: AbortController
 ws.addEventListener('message', (e) => {
+  if (e.data === 'setSystemMessage') {
+    setSystemMessage().then(() => {
+      console.log('System message set')
+    })
+    return
+  }
+
   if (controller) {
     controller.abort()
   }
