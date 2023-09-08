@@ -6,7 +6,10 @@ import (
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"golang.design/x/hotkey"
 	"log"
+	"os"
+	"os/exec"
 )
 
 // App struct
@@ -14,6 +17,7 @@ type App struct {
 	ctx      context.Context
 	fiberApp *fiber.App
 	conn     *websocket.Conn
+	hotkey   *hotkey.Hotkey
 }
 
 // NewApp creates a new App application struct
@@ -56,7 +60,12 @@ func (app *App) startup(ctx context.Context) {
 			}
 
 			if messageType == websocket.TextMessage {
-				runtime.EventsEmit(ctx, "message", string(message))
+				textMessage := string(message)
+				if textMessage == ":done:" {
+					runtime.EventsEmit(ctx, "message-end", false)
+				} else {
+					runtime.EventsEmit(ctx, "message", textMessage)
+				}
 			} else {
 				runtime.EventsEmit(ctx, "message", "websocket message received of type "+string(rune(messageType)))
 			}
@@ -69,6 +78,46 @@ func (app *App) startup(ctx context.Context) {
 		}
 	}()
 
+	app.hotkey = hotkey.New([]hotkey.Modifier{hotkey.ModCmd, hotkey.ModShift}, hotkey.KeyC)
+	if err := app.hotkey.Register(); err != nil {
+		log.Fatal(err)
+	}
+
+	go func() {
+		for {
+			<-app.hotkey.Keyup()
+			question, err := app.GetSelectionText()
+			if err != nil {
+				fmt.Println("Error getting selection text: ", err.Error())
+				continue
+			}
+
+			if question == "" {
+				continue
+			}
+
+			app.SendMessage(question)
+			runtime.EventsEmit(ctx, "question", question)
+		}
+	}()
+
+}
+
+func (app *App) GetSelectionText() (string, error) {
+	// copy to clipboard and print to stdout
+	script := `
+		 tell application "System Events" to keystroke "c" using command down
+		 delay 0.1
+		 set the clipboard to (the clipboard as text)
+		 get the clipboard
+	`
+	c := exec.Command("/usr/bin/osascript", "-e", script)
+	c.Stdin = os.Stdin
+	output, err := c.CombinedOutput()
+	if err != nil {
+		return "", err
+	}
+	return string(output), nil
 }
 
 func (app *App) Shutdown(ctx context.Context) {
@@ -81,6 +130,10 @@ func (app *App) OnBeforeClose(ctx context.Context) bool {
 		return true
 	}
 
+	if app.hotkey != nil {
+		app.hotkey.Unregister()
+	}
+
 	return false
 }
 
@@ -88,7 +141,7 @@ func (app *App) SendMessage(message string) error {
 	if app.conn == nil {
 		return fmt.Errorf("no websocket connection")
 	}
-	return app.conn.WriteMessage(websocket.TextMessage, []byte(message))
+	return app.conn.WriteMessage(websocket.TextMessage, []byte("check the grammar, rewrite to address any issues, provide a brief explanation of its structure:\n\n"+message))
 }
 
 // GetConnection returns the websocket connection

@@ -3,11 +3,15 @@ import {ClipboardGetText, EventsOn, WindowSetAlwaysOnTop} from "../wailsjs/runti
 import {IsConnected, SendMessage} from "../wailsjs/go/main/App";
 import {onMounted, ref, watchEffect} from "vue";
 import {Mdit} from "./services/mdit";
+import {Setting} from "@element-plus/icons-vue";
+import OptionForm from "./components/OptionForm.vue";
+
 const isLoading = ref(false)
 const isExtConnected = ref(false)
-const message = ref('')
+const isShowSetting = ref(false)
+
+const answer = ref('')
 const question = ref('')
-const isMonitorClipboard = ref(true)
 
 
 onMounted(async () => {
@@ -15,52 +19,81 @@ onMounted(async () => {
 })
 
 EventsOn('message', (data: string) => {
-  message.value = Mdit(data)
+  answer.value = Mdit(data)
+})
+
+EventsOn('message-end', (data: string) => {
+  isLoading.value = false
 })
 
 EventsOn('ext-connected', (isConnected: boolean) => {
   isExtConnected.value = isConnected
 })
 
-setInterval(async () => {
-  if (!isMonitorClipboard.value) return
-
-  const text = await ClipboardGetText()
-  if (text && text !== question.value) {
-    question.value = text
-    await sendMessage()
-  }
-}, 1000)
-
-const onDrop = async (e: DragEvent) => {
-  e.preventDefault()
-  const text = e.dataTransfer?.getData('text')
-  if (text && text !== question.value) {
-    question.value = text
-    await sendMessage()
-  }
-}
+EventsOn('question', (data: string) => {
+  question.value = data
+})
 
 const sendMessage = async () => {
   isLoading.value = true
+  isShowSetting.value = false
+  answer.value = ''
+
   if (question.value) {
-    await SendMessage("check the grammar, rewrite to address any issues, and provide concise explanations. If it's already correct, please attempt to make improvements: "+question.value)
+    await SendMessage(question.value)
   }
-  isLoading.value = false
 }
 </script>
 
 <template>
   <ElContainer>
-    <ElMain v-if="isExtConnected" @drop="onDrop">
+    <ElHeader :class="$style.inner">
+      <ElInput v-if="!isShowSetting" v-loading="isLoading" :disabled="isLoading || !isExtConnected" v-model="question"
+               @keyup.enter="sendMessage"
+               placeholder="Type and press Enter"/>
+      <ElText v-else>Settings</ElText>
       <div>
-        <el-switch width="100" v-model="isMonitorClipboard" inactive-text="Monitor clipboard" active-text="Stop monitor" inline-prompt />
-        <ElInput v-if="!isMonitorClipboard" v-model="question" @keyup.enter="sendMessage" placeholder="Paste your question here" />
+        <ElButton @click.prevent="isShowSetting = !isShowSetting" :icon="Setting" circle></ElButton>
       </div>
-      <div v-html="message"></div>
-    </ElMain>
-    <ElMain v-else>
-      <p>What you see here is half of the app. To make it work, you need to open Chrome, install the extension, log in, and keep the ChatGPT tab open.</p>
-    </ElMain>
+
+    </ElHeader>
+    <template v-if="isShowSetting">
+      <ElMain>
+        <OptionForm/>
+      </ElMain>
+    </template>
+    <template v-else>
+      <ElMain v-if="isExtConnected">
+        <ElText :class="$style.text" v-html="answer"></ElText>
+        <ElText size="small" v-if="isLoading"> typing...</ElText>
+      </ElMain>
+
+      <ElMain v-else>
+        <p>To make it function, you should open Chrome, install the extension, log in, and keep the ChatGPT tab
+          open.</p>
+      </ElMain>
+    </template>
+
   </ElContainer>
 </template>
+
+<style module lang="sass">
+.inner
+  width: 100%
+  height: auto
+  display: flex
+  justify-content: space-between
+  align-items: center
+  padding: 10px 10px
+  background: var(--el-color-black)
+  color: var(--el-color-white)
+  gap: 10px
+
+.text
+  word-break: break-word
+</style>
+
+<style lang="sass">
+ul, ol
+  padding-left: 25px
+</style>

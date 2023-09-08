@@ -1,5 +1,6 @@
 import ReconnectingWebSocket from 'reconnecting-websocket'
 import { generateAnswer } from './fns/generateAnswer'
+import { setSystemMessage } from './fns/setSystemMessage'
 
 const options = {
   connectionTimeout: 1000
@@ -18,6 +19,10 @@ ws.addEventListener('error', (err) => {
   console.error(err)
 })
 
+setSystemMessage().then(() => {
+  console.log('System message set')
+})
+
 let controller: AbortController
 ws.addEventListener('message', (e) => {
   if (controller) {
@@ -29,6 +34,7 @@ ws.addEventListener('message', (e) => {
     signal: controller.signal,
     async onEvent(event) {
       if (event.type === 'done') {
+        ws.send(':done:')
       } else if (event.type === 'answer') {
         ws.send(event.data.text)
       } else if (event.type === 'error') {
