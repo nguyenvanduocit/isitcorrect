@@ -51,7 +51,7 @@ const sendMessage = async () => {
 <template>
   <ElContainer>
     <ElHeader :class="$style.inner">
-      <ElInput v-if="!isShowSetting" v-loading="isLoading" :disabled="isLoading || !isExtConnected" v-model="question"
+      <ElInput autofocus v-if="!isShowSetting" v-loading="isLoading" :disabled="isLoading || !isExtConnected" v-model="question"
                @keyup.enter="sendMessage"
                placeholder="Type and press Enter"/>
       <ElText v-else>Settings</ElText>

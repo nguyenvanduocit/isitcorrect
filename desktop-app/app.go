@@ -8,8 +8,6 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.design/x/hotkey"
 	"log"
-	"os"
-	"os/exec"
 )
 
 // App struct
@@ -87,6 +85,7 @@ func (app *App) startup(ctx context.Context) {
 	go func() {
 		for {
 			<-app.hotkey.Keyup()
+			runtime.WindowShow(ctx) // Show the window
 			question, err := app.GetSelectionText()
 			if err != nil {
 				fmt.Println("Error getting selection text: ", err.Error())
@@ -100,28 +99,18 @@ func (app *App) startup(ctx context.Context) {
 			app.SendMessage(question)
 			runtime.EventsEmit(ctx, "question", question)
 			runtime.EventsEmit(ctx, "isLoading", true)
-			runtime.WindowShow(ctx) // Show the
 		}
 	}()
 
 }
 
 func (app *App) GetSelectionText() (string, error) {
-	// copy to clipboard and print to stdout
-	script := `
-		 tell application "System Events" to keystroke "c" using command down
-		 delay 0.1
-		tell application "System Events" to keystroke "c" using command up
-		 set the clipboard to (the clipboard as text)
-		 get the clipboard
-	`
-	c := exec.Command("/usr/bin/osascript", "-e", script)
-	c.Stdin = os.Stdin
-	output, err := c.CombinedOutput()
+	text, err := runtime.ClipboardGetText(app.ctx)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error getting clipboard text: %v", err)
 	}
-	return string(output), nil
+
+	return text, nil
 }
 
 func (app *App) Shutdown(ctx context.Context) {
