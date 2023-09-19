@@ -137,7 +137,7 @@ func (app *App) SendMessage(message string) error {
 	return app.conn.WriteMessage(websocket.TextMessage, []byte("check the grammar and typo of the following sentence, Rewrite it if necessary, and explain any changes you make. Response in format: \n\nRewrite sentence: \n\nChanges made and why:\n\n The sentence to check is: "+message))
 }
 
-// GetConnection returns the websocket connection
+// IsConnected GetConnection returns the websocket connection
 func (app *App) IsConnected() bool {
 	return app.conn != nil
 }
