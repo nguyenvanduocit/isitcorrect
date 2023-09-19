@@ -134,7 +134,7 @@ func (app *App) SendMessage(message string) error {
 	if app.conn == nil {
 		return fmt.Errorf("no websocket connection")
 	}
-	return app.conn.WriteMessage(websocket.TextMessage, []byte("check the grammar, rewrite to address any issues, provide a brief explanation of its structure:\n\n"+message))
+	return app.conn.WriteMessage(websocket.TextMessage, []byte("check the grammar and typo of the following sentence, Rewrite it if necessary, and explain any changes you make. Response in format: \n\nRewrite sentence: \n\nChanges made and why:\n\n The sentence to check is: "+message))
 }
 
 // GetConnection returns the websocket connection
