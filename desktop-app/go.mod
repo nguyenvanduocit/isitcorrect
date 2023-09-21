@@ -5,6 +5,7 @@ go 1.18
 require (
 	github.com/gofiber/contrib/websocket v1.2.1
 	github.com/gofiber/fiber/v2 v2.49.1
+	github.com/micmonay/keybd_event v1.1.1
 	github.com/wailsapp/wails/v2 v2.6.0
 	golang.design/x/hotkey v0.4.1
 )

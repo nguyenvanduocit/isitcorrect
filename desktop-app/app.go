@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
+	"github.com/micmonay/keybd_event"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.design/x/hotkey"
 	"log"
@@ -16,15 +17,23 @@ type App struct {
 	fiberApp *fiber.App
 	conn     *websocket.Conn
 	hotkey   *hotkey.Hotkey
+	kb       keybd_event.KeyBonding
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
+
 	return &App{}
 }
 
 func (app *App) startup(ctx context.Context) {
 	app.ctx = ctx
+
+	kb, err := keybd_event.NewKeyBonding()
+	if err != nil {
+		panic(err)
+	}
+	app.kb = kb
 
 	app.fiberApp = fiber.New()
 
@@ -105,6 +114,13 @@ func (app *App) startup(ctx context.Context) {
 }
 
 func (app *App) GetSelectionText() (string, error) {
+	app.kb.Clear()
+	app.kb.HasSuper(true)
+	app.kb.SetKeys(keybd_event.VK_C)
+
+	if err := app.kb.Launching(); err != nil {
+		return "", fmt.Errorf("error launching keybd_event: %v", err)
+	}
 	text, err := runtime.ClipboardGetText(app.ctx)
 	if err != nil {
 		return "", fmt.Errorf("error getting clipboard text: %v", err)
