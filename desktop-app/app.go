@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
-	"github.com/micmonay/keybd_event"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.design/x/hotkey"
 	"log"
@@ -17,7 +16,6 @@ type App struct {
 	fiberApp *fiber.App
 	conn     *websocket.Conn
 	hotkey   *hotkey.Hotkey
-	kb       keybd_event.KeyBonding
 }
 
 // NewApp creates a new App application struct
@@ -28,12 +26,6 @@ func NewApp() *App {
 
 func (app *App) startup(ctx context.Context) {
 	app.ctx = ctx
-
-	kb, err := keybd_event.NewKeyBonding()
-	if err != nil {
-		panic(err)
-	}
-	app.kb = kb
 
 	app.fiberApp = fiber.New()
 
@@ -114,13 +106,6 @@ func (app *App) startup(ctx context.Context) {
 }
 
 func (app *App) GetSelectionText() (string, error) {
-	app.kb.Clear()
-	app.kb.HasSuper(true)
-	app.kb.SetKeys(keybd_event.VK_C)
-
-	if err := app.kb.Launching(); err != nil {
-		return "", fmt.Errorf("error launching keybd_event: %v", err)
-	}
 	text, err := runtime.ClipboardGetText(app.ctx)
 	if err != nil {
 		return "", fmt.Errorf("error getting clipboard text: %v", err)
@@ -150,7 +135,7 @@ func (app *App) SendMessage(message string) error {
 	if app.conn == nil {
 		return fmt.Errorf("no websocket connection")
 	}
-	return app.conn.WriteMessage(websocket.TextMessage, []byte("check the grammar and typo of the following sentence, Rewrite it if necessary, and explain any changes you make. Response in format: \n\nRewrite sentence: \n\nChanges made and why:\n\n The sentence to check is: "+message))
+	return app.conn.WriteMessage(websocket.TextMessage, []byte("check the grammar and spelling of the following sentence, Rewrite it if necessary, and explain any changes you make. Response in format: \n\nRewrite sentence: \n\nChanges made and why:\n\n The sentence to check is: "+message))
 }
 
 // IsConnected GetConnection returns the websocket connection
