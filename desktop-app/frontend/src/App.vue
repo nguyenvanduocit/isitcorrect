@@ -18,11 +18,11 @@ onMounted(async () => {
   isExtConnected.value = await IsConnected()
 })
 
-EventsOn('message', (data: string) => {
+EventsOn('generateAnswer.stream', (data: string) => {
   answer.value = Mdit(data)
 })
 
-EventsOn('message-end', (data: string) => {
+EventsOn('generateAnswer.done', (data: string) => {
   isLoading.value = false
 })
 

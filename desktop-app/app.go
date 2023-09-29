@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"github.com/gofiber/contrib/websocket"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gorilla/websocket"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.design/x/hotkey"
 	"log"
@@ -12,10 +12,9 @@ import (
 
 // App struct
 type App struct {
-	ctx      context.Context
-	fiberApp *fiber.App
-	conn     *websocket.Conn
-	hotkey   *hotkey.Hotkey
+	ctx    context.Context
+	hotkey *hotkey.Hotkey
+	conn   *websocket.Conn
 }
 
 // NewApp creates a new App application struct
@@ -24,57 +23,44 @@ func NewApp() *App {
 	return &App{}
 }
 
+type WsMessage struct {
+	Sender    string    `json:"sender"`
+	Recipient string    `json:"recipient"`
+	Type      string    `json:"type"`
+	Message   AiMessage `json:"message"`
+}
+
+type AiMessage struct {
+	ConversationID string `json:"conversationID"`
+	Message        string `json:"message"`
+	Type           string `json:"type"`
+}
+
 func (app *App) startup(ctx context.Context) {
 	app.ctx = ctx
 
-	app.fiberApp = fiber.New()
+	conn, _, err := websocket.DefaultDialer.Dial("ws://localhost:8080/api/v1/ws?room=development&username=isitcorrect", nil)
+	if err != nil {
+		log.Fatal("dial:", err)
+	}
 
-	app.fiberApp.Use(func(c *fiber.Ctx) error {
-		if websocket.IsWebSocketUpgrade(c) {
-			return c.Next()
-		}
-
-		return c.SendStatus(fiber.StatusUpgradeRequired)
-	})
-
-	app.fiberApp.Get("/ws", websocket.New(func(conn *websocket.Conn) {
-		app.conn = conn
-		defer func() {
-			if err := conn.Close(); err != nil {
-				runtime.EventsEmit(ctx, "websocket", "error", err.Error())
-			}
-			runtime.EventsEmit(ctx, "ext-connected", false)
-			app.conn = nil
-		}()
-
-		runtime.EventsEmit(ctx, "ext-connected", true)
-		app.conn.WriteMessage(websocket.TextMessage, []byte("setSystemMessage"))
-
-		for {
-			messageType, message, err := app.conn.ReadMessage()
-			if err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					log.Println("read error:", err)
-				}
-				return
-			}
-
-			if messageType == websocket.TextMessage {
-				textMessage := string(message)
-				if textMessage == ":done:" {
-					runtime.EventsEmit(ctx, "message-end", false)
-				} else {
-					runtime.EventsEmit(ctx, "message", textMessage)
-				}
-			} else {
-				runtime.EventsEmit(ctx, "message", "websocket message received of type "+string(rune(messageType)))
-			}
-		}
-	}))
+	app.conn = conn
 
 	go func() {
-		if err := app.fiberApp.Listen("localhost:8991"); err != nil {
-			fmt.Println("Error starting fiber app")
+		var wsMessage WsMessage
+		for {
+			if err := conn.ReadJSON(&wsMessage); err != nil {
+				log.Println("read:", err)
+				return
+			}
+			runtime.LogError(ctx, fmt.Sprintf("wsMessage: %v", wsMessage))
+
+			switch wsMessage.Message.Type {
+			case "generateAnswer.stream":
+				runtime.EventsEmit(ctx, "generateAnswer.stream", wsMessage.Message.Message)
+			case "generateAnswer.done":
+				runtime.EventsEmit(ctx, "generateAnswer.stream", wsMessage.Message.Message)
+			}
 		}
 	}()
 
@@ -119,14 +105,11 @@ func (app *App) Shutdown(ctx context.Context) {
 }
 
 func (app *App) OnBeforeClose(ctx context.Context) bool {
-	if err := app.fiberApp.Shutdown(); err != nil {
-		fmt.Println("Error shutting down fiber app")
-		return true
-	}
-
 	if app.hotkey != nil {
 		app.hotkey.Unregister()
 	}
+
+	app.conn.Close()
 
 	return false
 }
@@ -135,7 +118,16 @@ func (app *App) SendMessage(message string) error {
 	if app.conn == nil {
 		return fmt.Errorf("no websocket connection")
 	}
-	return app.conn.WriteMessage(websocket.TextMessage, []byte("check the grammar and spelling of the following sentence, Rewrite it if necessary, and explain any changes you make. Response in format: \n\nRewrite sentence: \n\nChanges made and why:\n\n The sentence to check is: "+message))
+	payload, _ := json.Marshal(map[string]interface{}{
+		"type":      "dm",
+		"recipient": "chatgpt",
+		"message": map[string]interface{}{
+			"type":           "generateAnswer",
+			"conversationID": "abc",
+			"message":        "check the grammar and spelling of the following sentence, Rewrite it if necessary, and explain any changes you make. Response in format: \n\nRewrite sentence: \n\nChanges made and why:\n\n The sentence to check is: " + message,
+		},
+	})
+	return app.conn.WriteMessage(websocket.TextMessage, payload)
 }
 
 // IsConnected GetConnection returns the websocket connection
