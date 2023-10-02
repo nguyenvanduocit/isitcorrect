@@ -5,64 +5,87 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/websocket"
+	"github.com/tidwall/gjson"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.design/x/hotkey"
+	"io/ioutil"
 	"log"
+	"os"
 )
+
+type Settings struct {
+	RoomID     string `json:"room_id"`
+	WsEndpoint string `json:"ws_endpoint"`
+}
 
 // App struct
 type App struct {
-	ctx    context.Context
-	hotkey *hotkey.Hotkey
-	conn   *websocket.Conn
+	ctx      context.Context
+	hotkey   *hotkey.Hotkey
+	conn     *websocket.Conn
+	settings Settings
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
 
-	return &App{}
+	return &App{
+		settings: Settings{},
+	}
 }
 
-type WsMessage struct {
-	Sender    string    `json:"sender"`
-	Recipient string    `json:"recipient"`
-	Type      string    `json:"type"`
-	Message   AiMessage `json:"message"`
-}
+// StartWsHandler
+func (app *App) StartWsHandler() {
+	var buf []byte
+	var err error
+	var gMessage gjson.Result
+	for {
+		if _, buf, err = app.conn.ReadMessage(); err != nil {
+			log.Println("read:", err)
+			panic(err)
+		}
 
-type AiMessage struct {
-	ConversationID string `json:"conversationID"`
-	Message        string `json:"message"`
-	Type           string `json:"type"`
+		gMessage = gjson.ParseBytes(buf)
+		messageType := gMessage.Get("type").String()
+
+		switch messageType {
+		case "generateAnswer.stream":
+			runtime.EventsEmit(app.ctx, "generateAnswer.stream", gMessage.Get("message").String())
+		case "generateAnswer.done":
+			runtime.EventsEmit(app.ctx, "generateAnswer.done", "")
+		}
+	}
 }
 
 func (app *App) startup(ctx context.Context) {
 	app.ctx = ctx
 
-	conn, _, err := websocket.DefaultDialer.Dial("ws://localhost:8080/api/v1/ws?room=development&username=isitcorrect", nil)
-	if err != nil {
-		log.Fatal("dial:", err)
+	if err := app.LoadSettings(); err != nil {
+		runtime.LogError(ctx, "error loading settings: "+err.Error())
+		log.Fatal(err)
 	}
 
-	app.conn = conn
+	if roomID := app.GetRoomID(); roomID == "" {
+		runtime.EventsEmit(ctx, "message", "no room ID saved")
+	} else if err := app.StartWsConnection(app.settings.WsEndpoint, roomID); err != nil {
+		runtime.LogError(ctx, "error starting websocket connection: "+err.Error())
+		log.Fatal(err)
+	} else {
+		app.StartWsHandler()
+	}
 
-	go func() {
-		var wsMessage WsMessage
-		for {
-			if err := conn.ReadJSON(&wsMessage); err != nil {
-				log.Println("read:", err)
-				return
-			}
-			runtime.LogError(ctx, fmt.Sprintf("wsMessage: %v", wsMessage))
+	runtime.EventsOn(ctx, "WebsocketDisconnected", func(args ...interface{}) {
+		app.conn = nil
+	})
 
-			switch wsMessage.Message.Type {
-			case "generateAnswer.stream":
-				runtime.EventsEmit(ctx, "generateAnswer.stream", wsMessage.Message.Message)
-			case "generateAnswer.done":
-				runtime.EventsEmit(ctx, "generateAnswer.stream", wsMessage.Message.Message)
-			}
+	runtime.EventsOn(ctx, "roomIdSaved", func(args ...interface{}) {
+		if app.conn != nil {
+			app.conn.Close()
 		}
-	}()
+
+		if err := app.StartWsConnection(app.settings.WsEndpoint, app.GetRoomID()); err != nil {
+		}
+	})
 
 	app.hotkey = hotkey.New([]hotkey.Modifier{hotkey.ModCmd, hotkey.ModShift}, hotkey.KeyC)
 	if err := app.hotkey.Register(); err != nil {
@@ -72,19 +95,24 @@ func (app *App) startup(ctx context.Context) {
 	go func() {
 		for {
 			<-app.hotkey.Keyup()
-			runtime.WindowShow(ctx) // Show the window
+			runtime.WindowShow(ctx)
 			question, err := app.GetSelectionText()
 			if err != nil {
-				fmt.Println("Error getting selection text: ", err.Error())
+				runtime.EventsEmit(ctx, "message", "error getting selection text: "+err.Error())
 				continue
 			}
 
 			if question == "" {
+				runtime.EventsEmit(ctx, "message", "no text selected")
 				continue
 			}
 
-			app.SendMessage(question)
 			runtime.EventsEmit(ctx, "question", question)
+
+			if err := app.GenerateAnswer(question); err != nil {
+				runtime.EventsEmit(ctx, "message", "error generating answer: "+err.Error())
+				continue
+			}
 			runtime.EventsEmit(ctx, "isLoading", true)
 		}
 	}()
@@ -101,7 +129,7 @@ func (app *App) GetSelectionText() (string, error) {
 }
 
 func (app *App) Shutdown(ctx context.Context) {
-
+	app.SaveSettings()
 }
 
 func (app *App) OnBeforeClose(ctx context.Context) bool {
@@ -114,7 +142,7 @@ func (app *App) OnBeforeClose(ctx context.Context) bool {
 	return false
 }
 
-func (app *App) SendMessage(message string) error {
+func (app *App) GenerateAnswer(message string) error {
 	if app.conn == nil {
 		return fmt.Errorf("no websocket connection")
 	}
@@ -122,9 +150,28 @@ func (app *App) SendMessage(message string) error {
 		"type":      "dm",
 		"recipient": "chatgpt",
 		"message": map[string]interface{}{
-			"type":           "generateAnswer",
-			"conversationID": "abc",
-			"message":        "check the grammar and spelling of the following sentence, Rewrite it if necessary, and explain any changes you make. Response in format: \n\nRewrite sentence: \n\nChanges made and why:\n\n The sentence to check is: " + message,
+			"type":    "generateAnswer",
+			"message": "check the grammar and spelling of the following sentence, Rewrite it if necessary, and explain any changes you make. Response in format: \n\nRewrite sentence: \n\nChanges made and why:\n\n The sentence to check is: " + message,
+		},
+	})
+	return app.conn.WriteMessage(websocket.TextMessage, payload)
+}
+
+// SetSystemMessage SetSystemMessage
+func (app *App) SetSystemMessage() error {
+	if app.conn == nil {
+		return fmt.Errorf("no websocket connection")
+	}
+	payload, _ := json.Marshal(map[string]interface{}{
+		"type":      "dm",
+		"recipient": "chatgpt",
+		"message": map[string]interface{}{
+			"type": "setSystemMessage",
+			"message": map[string]string{
+				"about_user_message":  "I am learning English and would like to improve my writing skills. Please help me by correcting my grammar and spelling. Thank you!",
+				"about_model_message": "I am a GPT-3 model trained on the English language. I can help you improve your writing skills by correcting your grammar and spelling.",
+				"enabled":             "true",
+			},
 		},
 	})
 	return app.conn.WriteMessage(websocket.TextMessage, payload)
@@ -136,5 +183,97 @@ func (app *App) IsConnected() bool {
 }
 
 func (app *App) OnDomReady(ctx context.Context) {
-	runtime.EventsEmit(ctx, "ext-connected", app.conn != nil)
+
+}
+
+func (app *App) StartWsConnection(wsEndpoint, roomID string) error {
+	conn, _, err := websocket.DefaultDialer.Dial(wsEndpoint+"?room="+roomID+"&username=isitcorrect", nil)
+	if err != nil {
+		return err
+	}
+
+	conn.SetCloseHandler(func(code int, text string) error {
+		runtime.EventsEmit(app.ctx, "message", "connection closed")
+		app.conn = nil
+		return nil
+	})
+
+	app.conn = conn
+
+	return nil
+}
+
+// GetRoomID returns the room ID
+func (app *App) GetRoomID() string {
+	return app.settings.RoomID
+}
+
+// SetRoomID sets the room ID
+func (app *App) SetRoomID(roomID string) {
+	app.settings.RoomID = roomID
+	if err := app.SaveSettings(); err != nil {
+		runtime.EventsEmit(app.ctx, "message", "error saving settings: "+err.Error())
+		return
+	}
+	runtime.EventsEmit(app.ctx, "message", roomID+" room ID saved")
+	runtime.EventsEmit(app.ctx, "roomIdSaved")
+}
+
+// LoadSettings loads the settings
+func (app *App) LoadSettings() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	// Create the user settings file path.
+	settingsFilePath := homeDir + "/.isitcorrect-settings.json"
+
+	// Check if the settings file exists.
+	if _, err := os.Stat(settingsFilePath); err != nil {
+		// If the file doesn't exist, create it.
+		if os.IsNotExist(err) {
+			if err := app.SaveSettings(); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+
+	// Read the settings file.
+	content, err := ioutil.ReadFile(settingsFilePath)
+	if err != nil {
+		return err
+	}
+
+	// Unmarshal the settings file.
+	if err := json.Unmarshal(content, &app.settings); err != nil {
+		return err
+	}
+
+	if app.settings.WsEndpoint == "" {
+		app.settings.WsEndpoint = "wss://aibridge.fly.dev/api/v1/ws"
+	}
+
+	return nil
+}
+
+// Init settings
+func (app *App) SaveSettings() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	// Create the user settings file path.
+	settingsFilePath := homeDir + "/.isitcorrect-settings.json"
+
+	content, _ := json.Marshal(app.settings)
+	err = ioutil.WriteFile(settingsFilePath, content, 0600)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

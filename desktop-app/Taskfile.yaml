@@ -1,0 +1,11 @@
+version: '3'
+tasks:
+  dev:
+    cmds:
+      - wails dev
+    silent: true
+  build:
+    cmds:
+      - wails build
+      - rm -rf /Applications/isitcorrect.app
+      - mv ./build/bin/isitcorrect.app /Applications/

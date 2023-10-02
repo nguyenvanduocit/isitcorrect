@@ -1,10 +1,11 @@
 <script lang="ts" setup>
 import {ClipboardGetText, EventsOn, WindowSetAlwaysOnTop} from "../wailsjs/runtime";
-import {IsConnected, SendMessage} from "../wailsjs/go/main/App";
-import {onMounted, ref, watchEffect} from "vue";
+import {onMounted, ref} from "vue";
 import {Mdit} from "./services/mdit";
 import {Setting} from "@element-plus/icons-vue";
 import OptionForm from "./components/OptionForm.vue";
+import {ElMessage, ElMessageBox} from "element-plus";
+import {GenerateAnswer, IsConnected} from "../wailsjs/go/main/App";
 
 const isLoading = ref(false)
 const isExtConnected = ref(false)
@@ -12,7 +13,6 @@ const isShowSetting = ref(false)
 
 const answer = ref('')
 const question = ref('')
-
 
 onMounted(async () => {
   isExtConnected.value = await IsConnected()
@@ -37,13 +37,32 @@ EventsOn('isLoading', (data: boolean) => {
   isLoading.value = data
 })
 
+EventsOn("message", (data: string) => {
+  ElMessageBox({
+    message: data,
+    type: 'success'
+  })
+})
+
+EventsOn("setState", (state: string, value: any) => {
+  console.log(state, value)
+  switch (state) {
+    case "alwaysOnTop":
+      WindowSetAlwaysOnTop(value)
+      break
+    case 'isShowSetting':
+      isShowSetting.value = value
+      break
+  }
+})
+
 const sendMessage = async () => {
   isLoading.value = true
   isShowSetting.value = false
   answer.value = ''
 
   if (question.value) {
-    await SendMessage(question.value)
+    await GenerateAnswer(question.value)
   }
 }
 </script>
@@ -51,7 +70,8 @@ const sendMessage = async () => {
 <template>
   <ElContainer>
     <ElHeader :class="$style.inner">
-      <ElInput autofocus v-if="!isShowSetting" v-loading="isLoading" :disabled="isLoading || !isExtConnected" v-model="question"
+      <ElInput autofocus v-if="!isShowSetting" v-loading="isLoading" :disabled="isLoading || !isExtConnected"
+               v-model="question"
                @keyup.enter="sendMessage"
                placeholder="Type and press Enter"/>
       <ElText v-else>Settings</ElText>
