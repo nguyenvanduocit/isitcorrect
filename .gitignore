@@ -1,1 +1,3 @@
-desktop-app/build
+build/bin
+node_modules
+frontend/dist

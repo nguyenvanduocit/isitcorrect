@@ -1,14 +1,10 @@
-# https://taskfile.dev
-
 version: '3'
-
-vars:
-  GREETING: Hello, World!
-
 tasks:
-  default:
-    dir: ./desktop-app
+  dev:
     cmds:
-      - rm -rf /Applications/isitcorrect.app
+      - wails dev
+  build:
+    cmds:
       - wails build
+      - rm -rf /Applications/isitcorrect.app
       - mv ./build/bin/isitcorrect.app /Applications/

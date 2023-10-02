@@ -1,31 +1,19 @@
-# Is it correct?
+# README
 
-Yesterday, I chated with a friend in English, and ... you know, it's hard.
+## About
 
-Writing in code is easier than Englisn. So, I wrote it in an hour and a half, so it's not perfect. If you find any bugs, please report them in the issues section.
+This is the official Wails Vue-TS template.
 
-## Structure
+You can configure the project by editing `wails.json`. More information about the project settings can be found
+here: https://wails.io/docs/reference/project-config
 
-Currently, using OpenAI is the fastest way to get results, but I don't want to pay. Meanwhile, ChatGPT is completely free. So, I've developed a Chrome extension to inject custom scripts into ChatGPT and then connect to a WebSocket server, essentially acting as an API proxy.
+## Live Development
 
-On the other side, I use Golang to create an application that provides a UI, clipboard monitor, and WebSocket server.
+To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
+server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
+and have access to your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
+to this in your browser, and you can call your Go code from devtools.
 
-## Usage
+## Building
 
-First, you should build the extension using the command: "pnpm run build." After that, load the extension into Chrome.
-
-Secondly, construct the app using the following command: "wails build." It is essential to install Wails beforehand.
-
-Then, log in to ChatGPT and keep the tab open. There's no need to make it active.
-
-Finally, execute the application and press the button to establish a connection with the WebSocket server.
-
-The app have only two options:
-
-Let's Hoang do it for you
-
-1. Enable the 'Monitor clipboard' option, and the app will continuously monitor your clipboard, sending its content to the WebSocket server. It will check the clipboard every 1 second.
-2. Always on top: Enable the 'Always on top' option to ensure that the app remains above other windows at all times.
-
-p/s: The English on this Readme is not good, because it was created before the app was done. :)))
-
+To build a redistributable, production mode package, use `wails build`.
